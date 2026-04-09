@@ -22,12 +22,16 @@ public class GroupService {
      * Returns the created Group, or null if a group with that name already exists.
      */
     public Group createGroup(String name) {
-        if (groupsByName.containsKey(name.toLowerCase())) {
+        String normalized = normalizeName(name);
+        if (normalized == null) {
+            throw new IllegalArgumentException("Group name cannot be empty.");
+        }
+        if (groupsByName.containsKey(normalized)) {
             return null;  // duplicate
         }
         String id = IdGenerator.generateId("GRP");
-        Group group = new Group(id, name);
-        groupsByName.put(name.toLowerCase(), group);
+        Group group = new Group(id, name.trim());
+        groupsByName.put(normalized, group);
         return group;
     }
 
@@ -36,8 +40,19 @@ public class GroupService {
      * Returns the created User.
      */
     public User addMemberToGroup(Group group, String userName) {
+        if (group == null) {
+            throw new IllegalArgumentException("Group cannot be null.");
+        }
+        if (userName == null || userName.trim().isEmpty()) {
+            throw new IllegalArgumentException("User name cannot be empty.");
+        }
+        for (User existing : group.getMembers()) {
+            if (existing.getName().equalsIgnoreCase(userName.trim())) {
+                return null;
+            }
+        }
         String userId = IdGenerator.generateId("USR");
-        User user = new User(userId, userName);
+        User user = new User(userId, userName.trim());
         group.addMember(user);
         return user;
     }
@@ -47,7 +62,11 @@ public class GroupService {
      * Returns the Group or null if not found.
      */
     public Group getGroupByName(String name) {
-        return groupsByName.get(name.toLowerCase());
+        String normalized = normalizeName(name);
+        if (normalized == null) {
+            return null;
+        }
+        return groupsByName.get(normalized);
     }
 
     /**
@@ -55,5 +74,16 @@ public class GroupService {
      */
     public List<Group> getAllGroups() {
         return new ArrayList<>(groupsByName.values());
+    }
+
+    private String normalizeName(String name) {
+        if (name == null) {
+            return null;
+        }
+        String trimmed = name.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        return trimmed.toLowerCase();
     }
 }

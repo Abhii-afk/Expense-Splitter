@@ -1,0 +1,38 @@
+﻿
+=== SmartPrep Scheduler ===
+1. Add Subject
+2. Add Prerequisite
+3. Generate Schedule
+4. Update Progress
+5. Show Risk Alerts
+6. Exit
+Enter your choice: 
+=== GENERATED STUDY SCHEDULES ===
+
+--- 1. Prerequisite Order (Topological Sort) ---
+Valid study order:
+- DBMS
+- DSA
+- DSA
+- OS
+
+--- 2. Greedy Schedule (By Urgency & Difficulty) ---
+- OS (Days Left: 3, Required Hours: 6)
+- DSA (Days Left: 5, Required Hours: 10)
+- DBMS (Days Left: 7, Required Hours: 5)
+
+--- 3. Optimized DP Plan (Max Efficiency) ---
+Enter Total Available Study Hours for DP Optimization: Maximum Efficiency Score: 89
+Subjects to cover within 21 hours:
+- DBMS (Requires: 5h, Importance: 20)
+- OS (Requires: 6h, Importance: 40)
+- DSA (Requires: 10h, Importance: 29)
+
+=== SmartPrep Scheduler ===
+1. Add Subject
+2. Add Prerequisite
+3. Generate Schedule
+4. Update Progress
+5. Show Risk Alerts
+6. Exit
+Enter your choice: Exiting. Good luck with your studies!

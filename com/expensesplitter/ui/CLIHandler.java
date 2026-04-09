@@ -65,10 +65,10 @@ public class CLIHandler {
                     break;
                 case "0":
                     running = false;
-                    System.out.println("\n  Goodbye! Thanks for using Expense Splitter.\n");
+                    System.out.println("\n  Session closed. Thanks for using Expense Splitter.\n");
                     break;
                 default:
-                    System.out.println("\n  Invalid option. Please enter a number from the menu.\n");
+                    System.out.println("\n  Invalid choice. Please pick a listed option.\n");
             }
         }
 
@@ -76,19 +76,19 @@ public class CLIHandler {
     }
 
     private void printMenu() {
-        System.out.println("\n========================================");
-        System.out.println("          EXPENSE SPLITTER");
-        System.out.println("========================================");
-        System.out.println("  1. Create Group (and Add Members)");
-        System.out.println("  2. Add Individual Expense (A lent B)");
-        System.out.println("  3. Go Dutch (Custom Split)");
-        System.out.println("  4. Show Balances");
-        System.out.println("  5. Show Expense History");
-        System.out.println("  6. Show All Groups");
-        System.out.println("  7. Settle Payment (Clear Debt)");
-        System.out.println("  0. Exit");
-        System.out.println("========================================");
-        System.out.print("  Choose an option: ");
+        System.out.println("\n+--------------------------------------+");
+        System.out.println("|           EXPENSE SPLITTER           |");
+        System.out.println("+--------------------------------------+");
+        System.out.println("| 1. Create Group (and Add Members)    |");
+        System.out.println("| 2. Add Individual Expense (A lent B) |");
+        System.out.println("| 3. Go Dutch (Custom Split)           |");
+        System.out.println("| 4. Show Balances                     |");
+        System.out.println("| 5. Show Expense History              |");
+        System.out.println("| 6. Show All Groups                   |");
+        System.out.println("| 7. Settle Payment (Clear Debt)       |");
+        System.out.println("| 0. Exit                              |");
+        System.out.println("+--------------------------------------+");
+        System.out.print("  Your choice: ");
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -107,8 +107,8 @@ public class CLIHandler {
         Group group = groupService.createGroup(name);
         if (group != null) {
             System.out.println("  Group created: " + group);
-            System.out.println("\n  -- Add Members to '" + name + "' --");
-            System.out.println("  (Press Enter on a blank line to stop adding members)");
+            System.out.println("\n  Add members to '" + name + "'");
+            System.out.println("  (Press Enter on a blank line when you're done)");
 
             while (true) {
                 System.out.print("  Enter member name: ");
@@ -117,24 +117,16 @@ public class CLIHandler {
                     break;
                 }
 
-                boolean exists = false;
-                for (User existing : group.getMembers()) {
-                    if (existing.getName().equalsIgnoreCase(memberName)) {
-                        exists = true;
-                        break;
-                    }
-                }
-
-                if (exists) {
+                User user = groupService.addMemberToGroup(group, memberName);
+                if (user == null) {
                     System.out.println("  Error: '" + memberName + "' already exists in this group.");
                 } else {
-                    User user = groupService.addMemberToGroup(group, memberName);
                     System.out.println(
-                            "  Added " + user.getName() + " (Total members: " + group.getMembers().size() + ")");
+                            "  Added " + user.getName() + " | Members now: " + group.getMembers().size());
                 }
             }
             if (group.getMembers().size() < 2) {
-                System.out.println("  Warning: You need at least 2 members to split expenses later.");
+                System.out.println("  Note: Add at least 2 members to start splitting expenses.");
             }
         } else {
             System.out.println("  Error: A group with the name '" + name + "' already exists.");
@@ -160,7 +152,7 @@ public class CLIHandler {
         printMemberList(members);
 
         // Who lent?
-        System.out.print("  Who lent the money? (enter number): ");
+        System.out.print("  Who paid on behalf of someone else? (enter number): ");
         int lenderIndex = readInt() - 1;
         if (lenderIndex < 0 || lenderIndex >= members.size()) {
             System.out.println("  Error: Invalid selection.");
@@ -169,7 +161,7 @@ public class CLIHandler {
         User lender = members.get(lenderIndex);
 
         // Who borrowed?
-        System.out.print("  Who borrowed? (enter number): ");
+        System.out.print("  Who should repay this amount? (enter number): ");
         int borrowerIndex = readInt() - 1;
         if (borrowerIndex < 0 || borrowerIndex >= members.size()) {
             System.out.println("  Error: Invalid selection.");
@@ -190,13 +182,16 @@ public class CLIHandler {
             return;
         }
 
-        // Update balance directly
-        balanceService.updateDirectDebt(group, lender, borrower, amount);
-
-        System.out.println("\n  Individual expense recorded!");
-        System.out.println(
-                "    " + lender.getName() + " lent Rs." + String.format("%.2f", amount) + " to " + borrower.getName());
-        System.out.println("    " + borrower.getName() + " now owes " + lender.getName());
+        try {
+            String description = lender.getName() + " lent " + borrower.getName();
+            expenseService.addDirectExpense(group, lender, borrower, amount, description);
+            System.out.println("\n  Expense recorded successfully.");
+            System.out.println(
+                    "    " + lender.getName() + " covered Rs." + String.format("%.2f", amount) + " for " + borrower.getName());
+            System.out.println("    Balance updated: " + borrower.getName() + " owes " + lender.getName());
+        } catch (IllegalArgumentException e) {
+            System.out.println("  Error: " + e.getMessage());
+        }
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -218,7 +213,7 @@ public class CLIHandler {
         printMemberList(members);
 
         // Who paid the bill?
-        System.out.print("  Who paid the total bill? (enter number): ");
+        System.out.print("  Who is covering the bill this time? (enter number): ");
         int payerIndex = readInt() - 1;
         if (payerIndex < 0 || payerIndex >= members.size()) {
             System.out.println("  Error: Invalid selection.");
@@ -227,7 +222,7 @@ public class CLIHandler {
         User payer = members.get(payerIndex);
 
         // Enter each person's share
-        System.out.println("\n  Enter each person's individual share (enter 0 if not involved):");
+        System.out.println("\n  Enter each member's share (enter 0 if not involved):");
         Map<User, Double> shareMap = new HashMap<>();
         double totalEntered = 0;
 
@@ -252,13 +247,18 @@ public class CLIHandler {
             return;
         }
 
-        // Update balances
-        balanceService.updateCustomBalances(group, payer, shareMap);
+        try {
+            String description = "Go Dutch split by " + payer.getName();
+            expenseService.addCustomExpense(group, payer, description, shareMap);
+        } catch (IllegalArgumentException e) {
+            System.out.println("  Error: " + e.getMessage());
+            return;
+        }
 
-        System.out.println("\n  Go Dutch expense recorded!");
-        System.out.println("    Paid by     : " + payer.getName());
-        System.out.println("    Total split : Rs." + String.format("%.2f", totalEntered));
-        System.out.println("    Breakdown   :");
+        System.out.println("\n  Go Dutch split recorded.");
+        System.out.println("    Bill covered by : " + payer.getName());
+        System.out.println("    Total assigned  : Rs." + String.format("%.2f", totalEntered));
+        System.out.println("    Split details   :");
         for (Map.Entry<User, Double> entry : shareMap.entrySet()) {
             System.out.println(
                     "      " + entry.getKey().getName() + " owes Rs." + String.format("%.2f", entry.getValue()));
@@ -293,13 +293,13 @@ public class CLIHandler {
         if (history.isEmpty()) {
             System.out.println("\n  No expenses recorded in '" + group.getName() + "' yet.");
         } else {
-            System.out.println("\n  Expense History for '" + group.getName() + "'");
+        System.out.println("\n  Expense history for '" + group.getName() + "'");
             System.out.println("  ----------------------------------------");
             for (String line : history) {
                 System.out.println("    " + line);
             }
             System.out.println("  ----------------------------------------");
-            System.out.println("  Total expenses: " + group.getExpenses().size());
+            System.out.println("  Entries logged: " + group.getExpenses().size());
         }
     }
 
@@ -311,15 +311,17 @@ public class CLIHandler {
         List<Group> groups = groupService.getAllGroups();
 
         if (groups.isEmpty()) {
-            System.out.println("  No groups created yet. Use option 1 to create one.");
+            System.out.println("  No groups created yet. Use option 1 to create your first group.");
         } else {
             System.out.println("\n  All Groups:");
-            System.out.println("  ----------------------------------------");
+            System.out.println("  ------------------------------------------------------");
+            System.out.println("    Name                 Members    Expenses");
+            System.out.println("  ------------------------------------------------------");
             for (Group g : groups) {
-                System.out.println("    " + g.getName()
-                        + " | " + g.getMembers().size() + " members"
-                        + " | " + g.getExpenses().size() + " expenses");
+                System.out.println(String.format("    %-20s %7d %11d",
+                        g.getName(), g.getMembers().size(), g.getExpenses().size()));
             }
+            System.out.println("  ------------------------------------------------------");
         }
     }
 
@@ -341,7 +343,7 @@ public class CLIHandler {
         System.out.println("\n  Members of '" + group.getName() + "':");
         printMemberList(members);
 
-        System.out.print("  Who is paying the money? (enter number): ");
+        System.out.print("  Who is making the payment? (enter number): ");
         int payerIndex = readInt() - 1;
         if (payerIndex < 0 || payerIndex >= members.size()) {
             System.out.println("  Error: Invalid selection.");
@@ -349,7 +351,7 @@ public class CLIHandler {
         }
         User payingUser = members.get(payerIndex);
 
-        System.out.print("  Who is receiving the payment? (enter number): ");
+        System.out.print("  Who is receiving it? (enter number): ");
         int receiverIndex = readInt() - 1;
         if (receiverIndex < 0 || receiverIndex >= members.size()) {
             System.out.println("  Error: Invalid selection.");
@@ -372,7 +374,7 @@ public class CLIHandler {
         try {
             expenseService.addSettlement(group, payingUser, receivingUser, amount);
 
-            System.out.println("\n  Payment settled successfully!");
+            System.out.println("\n  Settlement recorded successfully.");
             System.out.println("    " + payingUser.getName() + " paid Rs." + String.format("%.2f", amount) + " to "
                     + receivingUser.getName());
         } catch (IllegalArgumentException e) {
@@ -385,16 +387,16 @@ public class CLIHandler {
     // ══════════════════════════════════════════════════════════════
 
     private Group promptForGroup() {
-        if (groupService.getAllGroups().isEmpty()) {
-            System.out.println("  Error: No groups exist yet. Create one first (option 1).");
+        List<Group> groups = groupService.getAllGroups();
+        if (groups.isEmpty()) {
+            System.out.println("  Error: No groups found. Create one first (option 1).");
             return null;
         }
 
-        System.out.print("  Available groups: ");
-        for (Group g : groupService.getAllGroups()) {
-            System.out.print("[" + g.getName() + "] ");
+        System.out.println("  Available groups:");
+        for (Group g : groups) {
+            System.out.println("    - " + g.getName());
         }
-        System.out.println();
 
         System.out.print("  Enter group name: ");
         String name = scanner.nextLine().trim();
@@ -425,8 +427,8 @@ public class CLIHandler {
         try {
             return Double.parseDouble(scanner.nextLine().trim());
         } catch (NumberFormatException e) {
-            System.out.println("  Error: Please enter a valid amount.");
-            return -1;
-        }
+        System.out.println("  Error: Please enter a valid number (example: 120 or 120.50).");
+        return -1;
     }
+}
 }

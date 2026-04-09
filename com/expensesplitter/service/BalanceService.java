@@ -5,10 +5,14 @@ import com.expensesplitter.model.Group;
 import com.expensesplitter.model.User;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 public class BalanceService {
+    private static final double EPSILON = 0.01;
 
     // ═══════════════════════════════════════════════════════════════
     //  CORE: Update balances after an expense (netting algorithm)
@@ -41,6 +45,15 @@ public class BalanceService {
      *           → Example: fresh debt, P now owes payer ₹100
      */
     public void updateBalances(Group group, Expense expense) {
+        if (group == null || expense == null) {
+            throw new IllegalArgumentException("Group and expense cannot be null.");
+        }
+        if (expense.getParticipants() == null || expense.getParticipants().isEmpty()) {
+            throw new IllegalArgumentException("Expense participants cannot be empty.");
+        }
+        if (expense.getAmount() <= 0) {
+            throw new IllegalArgumentException("Expense amount must be greater than zero.");
+        }
 
         // Step 1: Calculate equal share
         double splitShare = expense.getAmount() / expense.getParticipants().size();
@@ -69,7 +82,7 @@ public class BalanceService {
                 if (existing >= splitShare) {
                     // CASE 1: Reverse debt is larger — just reduce it
                     double newVal = existing - splitShare;
-                    if (newVal < 0.01) {
+                    if (newVal < EPSILON) {
                         map.remove(reverseKey);    // fully cancelled out
                     } else {
                         map.put(reverseKey, newVal);
@@ -99,6 +112,15 @@ public class BalanceService {
      * Example: A lent B ₹500 → "B→A" += 500 (with netting)
      */
     public void updateDirectDebt(Group group, User creditor, User debtor, double amount) {
+        if (group == null || creditor == null || debtor == null) {
+            throw new IllegalArgumentException("Group and users cannot be null.");
+        }
+        if (creditor.getId().equals(debtor.getId())) {
+            throw new IllegalArgumentException("Creditor and debtor cannot be the same user.");
+        }
+        if (amount <= 0) {
+            throw new IllegalArgumentException("Amount must be greater than zero.");
+        }
         Map<String, Double> map = group.getBalanceMap();
 
         String key = makeKey(debtor.getId(), creditor.getId());         // "debtor→creditor"
@@ -109,7 +131,7 @@ public class BalanceService {
             double existing = map.get(reverseKey);
             if (existing >= amount) {
                 double newVal = existing - amount;
-                if (newVal < 0.01) {
+                if (newVal < EPSILON) {
                     map.remove(reverseKey);
                 } else {
                     map.put(reverseKey, newVal);
@@ -136,11 +158,26 @@ public class BalanceService {
      *   → shareMap = {B: 200, C: 150}  (payer's own share not included)
      */
     public void updateCustomBalances(Group group, User payer, Map<User, Double> shareMap) {
+        if (group == null || payer == null) {
+            throw new IllegalArgumentException("Group and payer cannot be null.");
+        }
+        if (shareMap == null || shareMap.isEmpty()) {
+            throw new IllegalArgumentException("Custom share map cannot be empty.");
+        }
         Map<String, Double> map = group.getBalanceMap();
 
         for (Map.Entry<User, Double> entry : shareMap.entrySet()) {
             User debtor = entry.getKey();
             double share = entry.getValue();
+            if (debtor == null) {
+                throw new IllegalArgumentException("Share map contains a null user.");
+            }
+            if (share < 0) {
+                throw new IllegalArgumentException("Share cannot be negative.");
+            }
+            if (share < EPSILON) {
+                continue;
+            }
 
             if (debtor.getId().equals(payer.getId())) {
                 continue;  // skip payer's own share
@@ -154,7 +191,7 @@ public class BalanceService {
                 double existing = map.get(reverseKey);
                 if (existing >= share) {
                     double newVal = existing - share;
-                    if (newVal < 0.01) {
+                    if (newVal < EPSILON) {
                         map.remove(reverseKey);
                     } else {
                         map.put(reverseKey, newVal);
@@ -183,13 +220,14 @@ public class BalanceService {
         Map<String, Double> map = group.getBalanceMap();
 
         for (Map.Entry<String, Double> entry : map.entrySet()) {
-            if (entry.getValue() > 0.01) {
+            if (entry.getValue() > EPSILON) {
                 String[] ids = parseKey(entry.getKey());
                 String debtorName = findUserName(group, ids[0]);
                 String creditorName = findUserName(group, ids[1]);
                 result.add(debtorName + " owes " + creditorName + " ₹" + String.format("%.2f", entry.getValue()));
             }
         }
+        result.sort(String::compareTo);
         return result;
     }
 
@@ -222,15 +260,25 @@ public class BalanceService {
         StringBuilder sb = new StringBuilder();
 
         if (balances.isEmpty()) {
-            sb.append("✓ All settled up! No outstanding balances.");
+            sb.append("All settled up. No outstanding balances.");
             return sb.toString();
         }
 
-        sb.append("┌─── Balances for ").append(group.getName()).append(" ───┐\n");
+        String title = "Balances for " + group.getName();
+        int contentWidth = title.length();
         for (String line : balances) {
-            sb.append("│  ").append(line).append("\n");
+            if (line.length() > contentWidth) {
+                contentWidth = line.length();
+            }
         }
-        sb.append("└─────────────────────────────────┘");
+        String border = repeat('-', contentWidth + 4);
+        sb.append("+").append(border).append("+\n");
+        sb.append(String.format("|  %-" + contentWidth + "s  |%n", title));
+        sb.append("+").append(border).append("+\n");
+        for (String line : balances) {
+            sb.append(String.format("|  %-" + contentWidth + "s  |%n", line));
+        }
+        sb.append("+").append(border).append("+");
         return sb.toString();
     }
 
@@ -244,7 +292,7 @@ public class BalanceService {
      *   C: -Rs.105.00
      */
     public String getMemberSummary(Group group) {
-        Map<String, Double> netBalances = new java.util.HashMap<>();
+        Map<String, Double> netBalances = new HashMap<>();
         
         // Initialize all members to 0
         for (User user : group.getMembers()) {
@@ -264,16 +312,22 @@ public class BalanceService {
             netBalances.put(creditorName, netBalances.getOrDefault(creditorName, 0.0) + amount);
         }
         
+        Map<String, Double> sortedNetBalances = new LinkedHashMap<>();
+        netBalances.entrySet().stream()
+                .sorted(Comparator.comparing(Map.Entry::getKey, String.CASE_INSENSITIVE_ORDER))
+                .forEach(entry -> sortedNetBalances.put(entry.getKey(), entry.getValue()));
+
         StringBuilder sb = new StringBuilder();
-        sb.append("\n  -- Member Net Summary --\n");
-        for (Map.Entry<String, Double> entry : netBalances.entrySet()) {
+        sb.append("\n  Member net summary\n");
+        sb.append("  ------------------\n");
+        for (Map.Entry<String, Double> entry : sortedNetBalances.entrySet()) {
             double net = entry.getValue();
-            if (net > 0.01) {
-                sb.append("    ").append(entry.getKey()).append(": +Rs.").append(String.format("%.2f", net)).append(" (Gets back)\n");
-            } else if (net < -0.01) {
-                sb.append("    ").append(entry.getKey()).append(": -Rs.").append(String.format("%.2f", Math.abs(net))).append(" (Owes)\n");
+            if (net > EPSILON) {
+                sb.append("    ").append(entry.getKey()).append(": +Rs.").append(String.format("%.2f", net)).append(" (to receive)\n");
+            } else if (net < -EPSILON) {
+                sb.append("    ").append(entry.getKey()).append(": -Rs.").append(String.format("%.2f", Math.abs(net))).append(" (to pay)\n");
             } else {
-                sb.append("    ").append(entry.getKey()).append(": Rs.0.00 (Settled)\n");
+                sb.append("    ").append(entry.getKey()).append(": Rs.0.00 (settled)\n");
             }
         }
         return sb.toString();
@@ -342,5 +396,13 @@ public class BalanceService {
             }
         }
         return userId;
+    }
+
+    private String repeat(char ch, int count) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            sb.append(ch);
+        }
+        return sb.toString();
     }
 }
