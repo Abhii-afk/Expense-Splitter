@@ -2,43 +2,32 @@ package com.expensesplitter.service;
 
 import com.expensesplitter.model.Group;
 import com.expensesplitter.model.User;
-import com.expensesplitter.util.IdGenerator;
+import com.expensesplitter.repository.GroupRepository;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public class GroupService {
 
-    private Map<String, Group> groupsByName;  // O(1) lookup by name
+    private final GroupRepository groupRepository;
+    private final UserService userService;
 
-    public GroupService() {
-        this.groupsByName = new HashMap<>();
+    public GroupService(GroupRepository groupRepository, UserService userService) {
+        this.groupRepository = groupRepository;
+        this.userService = userService;
     }
 
-    /**
-     * Creates a new group with the given name.
-     * Returns the created Group, or null if a group with that name already exists.
-     */
     public Group createGroup(String name) {
-        String normalized = normalizeName(name);
-        if (normalized == null) {
+        if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("Group name cannot be empty.");
         }
-        if (groupsByName.containsKey(normalized)) {
-            return null;  // duplicate
+        Group existing = groupRepository.getGroupByName(name.trim());
+        if (existing != null) {
+            return null;
         }
-        String id = IdGenerator.generateId("GRP");
-        Group group = new Group(id, name.trim());
-        groupsByName.put(normalized, group);
-        return group;
+        groupRepository.createGroup(name.trim());
+        return groupRepository.getGroupByName(name.trim());
     }
 
-    /**
-     * Adds a new member to the specified group.
-     * Returns the created User.
-     */
     public User addMemberToGroup(Group group, String userName) {
         if (group == null) {
             throw new IllegalArgumentException("Group cannot be null.");
@@ -46,44 +35,23 @@ public class GroupService {
         if (userName == null || userName.trim().isEmpty()) {
             throw new IllegalArgumentException("User name cannot be empty.");
         }
-        for (User existing : group.getMembers()) {
-            if (existing.getName().equalsIgnoreCase(userName.trim())) {
-                return null;
-            }
-        }
-        String userId = IdGenerator.generateId("USR");
-        User user = new User(userId, userName.trim());
-        group.addMember(user);
+        User user = userService.createUser(userName.trim());
+        groupRepository.addMemberToGroup(group.getId(), user.getId());
         return user;
     }
 
-    /**
-     * Finds a group by its name (case-insensitive).
-     * Returns the Group or null if not found.
-     */
     public Group getGroupByName(String name) {
-        String normalized = normalizeName(name);
-        if (normalized == null) {
+        if (name == null || name.trim().isEmpty()) {
             return null;
         }
-        return groupsByName.get(normalized);
+        return groupRepository.getGroupByName(name.trim());
     }
 
-    /**
-     * Returns all groups as a list.
-     */
     public List<Group> getAllGroups() {
-        return new ArrayList<>(groupsByName.values());
+        return groupRepository.getAllGroups();
     }
 
-    private String normalizeName(String name) {
-        if (name == null) {
-            return null;
-        }
-        String trimmed = name.trim();
-        if (trimmed.isEmpty()) {
-            return null;
-        }
-        return trimmed.toLowerCase();
+    public List<String> getMemberIds(String groupId) {
+        return groupRepository.getMemberIds(groupId);
     }
 }
